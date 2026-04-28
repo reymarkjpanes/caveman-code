@@ -275,7 +275,6 @@ interface AnthropicCtor {
 
 async function loadAnthropic(): Promise<AnthropicCtor> {
 	try {
-		// @ts-expect-error optional peer dep — install with `npm i @anthropic-ai/sdk`.
 		const mod = (await import("@anthropic-ai/sdk")) as unknown as {
 			default: AnthropicCtor;
 			Anthropic?: AnthropicCtor;
