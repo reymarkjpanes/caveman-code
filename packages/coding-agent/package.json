@@ -26,6 +26,8 @@
 		"dist",
 		"docs",
 		"examples",
+		"commands",
+		"skills",
 		"CHANGELOG.md"
 	],
 	"scripts": {

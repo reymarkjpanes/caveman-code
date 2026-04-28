@@ -226,14 +226,36 @@ export {
 } from "./core/settings-manager.js";
 // Skills
 export {
+	applyInlineShellPreprocessing,
+	enforceSkillTokenBudget,
 	formatSkillsForPrompt,
+	type LoadedSkillBody,
+	loadSkillBody,
 	type LoadSkillsFromDirOptions,
 	type LoadSkillsResult,
 	loadSkills,
 	loadSkillsFromDir,
 	type Skill,
+	type SkillArgumentSpec,
+	type SkillExpandContext,
 	type SkillFrontmatter,
+	SKILL_REATTACH_TOKEN_CAP,
+	SKILL_SHARED_TOKEN_BUDGET,
+	substituteSkillVariables,
+	watchSkills,
 } from "./core/skills.js";
+// Slash commands (markdown loader)
+export {
+	expandMarkdownCommand,
+	findBundledCommandsDir,
+	loadMarkdownCommands,
+	type LoadMarkdownCommandsOptions,
+	type LoadMarkdownCommandsResult,
+	type MarkdownCommand,
+	type MarkdownCommandFrontmatter,
+	toSlashCommandInfo,
+	watchMarkdownCommands,
+} from "./core/slash-commands.js";
 export { createSyntheticSourceInfo } from "./core/source-info.js";
 // Tools
 export {

@@ -1,8 +1,28 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "fs";
+/**
+ * Skills loader — Claude Code-compatible markdown skill definitions.
+ *
+ * Provenance: borrowed from pi-code (`packages/coding-agent/src/core/skills.ts`)
+ * — cave is a heavy fork of pi-code. Extended in WS5 with:
+ * - Full Claude Code v2.1.119 frontmatter passthrough
+ *   (allowed-tools, model, effort, agent, hooks, paths, shell, user-invocable, ...)
+ * - Body loading on demand with progressive disclosure
+ * - 5k token cap when re-attached after compaction
+ * - 25k shared budget across all simultaneously attached skill bodies
+ * - Substitution engine ($ARGUMENTS, $0..$N, ${CAVE_SESSION_ID}, ${CAVE_SKILL_DIR}, ${CAVE_EFFORT})
+ * - Inline shell preprocessing via !`cmd`
+ * - Hot reload via fs.watch
+ *
+ * Two filesystem locations + plugin namespace, fully Claude Code-compatible.
+ * A user pasting `~/.claude/skills/<name>/SKILL.md` into `~/.cave/skills/<name>/SKILL.md`
+ * MUST work unchanged.
+ */
+
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, watch, type FSWatcher } from "fs";
 import ignore from "ignore";
 import { homedir } from "os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
+import { execCommand } from "./exec.js";
 import { parseFrontmatter } from "../utils/frontmatter.js";
 import type { ResourceDiagnostic } from "./diagnostics.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
@@ -12,6 +32,18 @@ const MAX_NAME_LENGTH = 64;
 
 /** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
+
+/**
+ * Approximate characters per token for budgeting.
+ * Used by enforceSkillTokenBudget; conservative ~4 chars/token average.
+ */
+const CHARS_PER_TOKEN = 4;
+
+/** Per-skill cap (in tokens) when a skill body is re-attached after compaction. */
+export const SKILL_REATTACH_TOKEN_CAP = 5_000;
+
+/** Shared budget (in tokens) across all simultaneously attached skill bodies. */
+export const SKILL_SHARED_TOKEN_BUDGET = 25_000;
 
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
@@ -64,11 +96,52 @@ function addIgnoreRules(ig: IgnoreMatcher, dir: string, rootDir: string): void {
 	}
 }
 
+/**
+ * Claude Code-compatible skill frontmatter (full superset).
+ * Source of truth: Claude Code v2.1.119 schema. A user pasting
+ * `~/.claude/skills/foo/SKILL.md` into `~/.cave/skills/foo/SKILL.md` works
+ * unchanged.
+ *
+ * `unknown` keys are tolerated and preserved on the SkillFrontmatter index
+ * signature so cave can pass through future fields without a release.
+ */
 export interface SkillFrontmatter {
+	/** Skill name; defaults to parent directory name if absent. */
+	name?: string;
+	/** Human-readable description. Required. Used for auto-attach matching. */
+	description?: string;
+	/** When true, skill cannot be auto-attached by the model — only by `/skill:<name>`. */
+	"disable-model-invocation"?: boolean;
+	/** Claude Code: argument hint shown in autocomplete. */
+	"argument-hint"?: string;
+	/** Claude Code: structured argument descriptors. */
+	arguments?: SkillArgumentSpec[] | Record<string, SkillArgumentSpec>;
+	/** Cave/CC: whether the user can `/<name>` directly (defaults: true). */
+	"user-invocable"?: boolean;
+	/** Claude Code: tools the skill is allowed to use. */
+	"allowed-tools"?: string[] | string;
+	/** Optional preferred model ID override for this skill. */
+	model?: string;
+	/** Effort level hint: low|medium|high. */
+	effort?: "low" | "medium" | "high" | string;
+	/** Cave-specific: when "fork", skill body is appended to forked subagent context. */
+	context?: "fork" | "main" | string;
+	/** Optional agent definition reference (e.g. ".cave/agents/foo.md"). */
+	agent?: string;
+	/** Hook configurations matching settings.json hooks key. */
+	hooks?: Record<string, unknown>;
+	/** Glob paths the skill applies to (auto-attach gating). */
+	paths?: string[] | string;
+	/** Optional shell to run inline `!`cmd`` substitutions in. */
+	shell?: string;
+	[key: string]: unknown;
+}
+
+export interface SkillArgumentSpec {
 	name?: string;
 	description?: string;
-	"disable-model-invocation"?: boolean;
-	[key: string]: unknown;
+	required?: boolean;
+	default?: string;
 }
 
 export interface Skill {
@@ -78,6 +151,12 @@ export interface Skill {
 	baseDir: string;
 	sourceInfo: SourceInfo;
 	disableModelInvocation: boolean;
+	/**
+	 * Full parsed frontmatter (all CC-spec keys + unknown passthrough).
+	 * Optional for backwards compatibility with external SDK consumers
+	 * that construct Skill objects directly; the loader always populates it.
+	 */
+	frontmatter?: SkillFrontmatter;
 }
 
 export interface LoadSkillsResult {
@@ -318,6 +397,7 @@ function loadSkillFromFile(
 				baseDir: skillDir,
 				sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
 				disableModelInvocation: frontmatter["disable-model-invocation"] === true,
+				frontmatter,
 			},
 			diagnostics,
 		};
@@ -335,6 +415,9 @@ function loadSkillFromFile(
  *
  * Skills with disableModelInvocation=true are excluded from the prompt
  * (they can only be invoked explicitly via /skill:name commands).
+ *
+ * Per WS5 progressive disclosure: only descriptions go here. Bodies are
+ * loaded on invoke via loadSkillBody().
  */
 export function formatSkillsForPrompt(skills: Skill[]): string {
 	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
@@ -504,5 +587,361 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
 	return {
 		skills: Array.from(skillMap.values()),
 		diagnostics: [...allDiagnostics, ...collisionDiagnostics],
+	};
+}
+
+// =============================================================================
+// WS5: Body Loading & Substitution Engine
+// =============================================================================
+
+/**
+ * Context for substitution and inline shell preprocessing.
+ * Mirrors the variables documented in the WS5 plan.
+ */
+export interface SkillExpandContext {
+	/** Working directory for shell preprocessing. */
+	cwd: string;
+	/** Raw arguments string (for $ARGUMENTS). */
+	rawArguments?: string;
+	/** Positional arguments ($0, $1, …). $0 is the skill/command name by convention. */
+	args?: string[];
+	/** Current cave session id; injected as ${CAVE_SESSION_ID}. */
+	sessionId?: string;
+	/** Effort level; injected as ${CAVE_EFFORT}. */
+	effort?: string;
+	/** Skill base directory (parent of SKILL.md); injected as ${CAVE_SKILL_DIR}. */
+	skillDir?: string;
+	/** When true, this body is being re-attached after a compaction; apply 5k cap. */
+	reattach?: boolean;
+	/** Maximum tokens this body may consume (overrides the default cap). */
+	tokenCap?: number;
+	/** Optional execution timeout for inline shell preprocessing (ms). */
+	shellTimeoutMs?: number;
+	/** Disable inline shell preprocessing (treat !`cmd` literally). */
+	disableShell?: boolean;
+}
+
+/**
+ * Result of loading and expanding a skill body.
+ */
+export interface LoadedSkillBody {
+	/** The expanded body text (after substitution + inline shell). */
+	content: string;
+	/** Original character length before truncation. */
+	originalChars: number;
+	/** Final character length after truncation. */
+	chars: number;
+	/** Approximate token count (chars / 4). */
+	approxTokens: number;
+	/** True if truncated to fit re-attach cap. */
+	truncated: boolean;
+	/** Inline shell substitutions performed and their results. */
+	shellResults: Array<{ command: string; ok: boolean; output: string }>;
+}
+
+/**
+ * Load and expand a skill's body markdown for invocation.
+ *
+ * Pipeline:
+ *   raw body → substitute variables → inline-shell preprocessing → token-cap.
+ *
+ * Inline shell uses Claude Code syntax: \`!`echo hello`\` (backticks around
+ * a leading bang). The command is executed in `ctx.cwd` and its stdout
+ * replaces the substitution. On timeout/failure the literal command is left
+ * in place with an inline error marker.
+ */
+export async function loadSkillBody(skill: Skill, ctx: SkillExpandContext): Promise<LoadedSkillBody> {
+	const raw = readFileSync(skill.filePath, "utf-8");
+	const { body } = parseFrontmatter<SkillFrontmatter>(raw);
+
+	const expanded = substituteSkillVariables(body, {
+		...ctx,
+		skillDir: ctx.skillDir ?? skill.baseDir,
+	});
+
+	const { content: shellExpanded, results } = ctx.disableShell
+		? { content: expanded, results: [] as Array<{ command: string; ok: boolean; output: string }> }
+		: await applyInlineShellPreprocessing(expanded, {
+				cwd: ctx.cwd,
+				timeoutMs: ctx.shellTimeoutMs ?? 5_000,
+				shell: skill.frontmatter?.shell as string | undefined,
+		  });
+
+	const cap = ctx.tokenCap ?? (ctx.reattach ? SKILL_REATTACH_TOKEN_CAP : SKILL_SHARED_TOKEN_BUDGET);
+	const trailer = `\n\n[…skill body truncated to ${cap} tokens to fit budget…]`;
+	const charCap = cap * CHARS_PER_TOKEN;
+	const truncated = shellExpanded.length > charCap;
+	const finalContent = truncated ? `${shellExpanded.slice(0, charCap - trailer.length)}${trailer}` : shellExpanded;
+
+	return {
+		content: finalContent,
+		originalChars: shellExpanded.length,
+		chars: finalContent.length,
+		approxTokens: Math.ceil(finalContent.length / CHARS_PER_TOKEN),
+		truncated,
+		shellResults: results,
+	};
+}
+
+/**
+ * Apply the 25k shared-token budget across multiple skill bodies.
+ * Greedily packs in input order; the last entry that doesn't fit is
+ * truncated with a "[…truncated…]" tail. Subsequent skills are dropped
+ * entirely (a diagnostic is added to a returned `dropped` list).
+ */
+export function enforceSkillTokenBudget(
+	bodies: Array<{ skill: Skill; body: LoadedSkillBody }>,
+	totalTokenBudget: number = SKILL_SHARED_TOKEN_BUDGET,
+): {
+	included: Array<{ skill: Skill; body: LoadedSkillBody }>;
+	dropped: Skill[];
+} {
+	const included: Array<{ skill: Skill; body: LoadedSkillBody }> = [];
+	const dropped: Skill[] = [];
+	let usedTokens = 0;
+
+	for (const entry of bodies) {
+		const remaining = totalTokenBudget - usedTokens;
+		if (remaining <= 0) {
+			dropped.push(entry.skill);
+			continue;
+		}
+		if (entry.body.approxTokens <= remaining) {
+			included.push(entry);
+			usedTokens += entry.body.approxTokens;
+			continue;
+		}
+		// Partial fit: truncate to remaining tokens.
+		const trailer = `\n\n[…skill body truncated to ${remaining} tokens to fit shared budget…]`;
+		const charCap = remaining * CHARS_PER_TOKEN;
+		const truncatedContent = `${entry.body.content.slice(0, Math.max(0, charCap - trailer.length))}${trailer}`;
+		included.push({
+			skill: entry.skill,
+			body: {
+				...entry.body,
+				content: truncatedContent,
+				chars: truncatedContent.length,
+				approxTokens: remaining,
+				truncated: true,
+			},
+		});
+		usedTokens = totalTokenBudget;
+	}
+
+	return { included, dropped };
+}
+
+/**
+ * Substitute variables in `text` using `ctx`.
+ *
+ * Supported (compatible with Claude Code, Codex, opencode, pi-code):
+ * - $ARGUMENTS — full args string joined with spaces
+ * - $@ — alias of $ARGUMENTS
+ * - $0, $1, $2, … — positional args (0-indexed: $0 is skill/command name)
+ * - ${@:N}, ${@:N:L} — bash-style slicing (1-indexed N)
+ * - ${CAVE_SESSION_ID} — current session id
+ * - ${CAVE_SKILL_DIR} — directory containing SKILL.md
+ * - ${CAVE_EFFORT} — current effort level
+ * - ${ENV_NAME} — fallback to process.env
+ *
+ * Replacement is non-recursive: substituted values are NOT scanned for
+ * further substitutions. This matches pi-code/Claude Code behaviour.
+ */
+export function substituteSkillVariables(text: string, ctx: SkillExpandContext): string {
+	const args = ctx.args ?? [];
+
+	// Two-pass substitution with NUL-wrapped sentinels so substituted values
+	// are NOT recursively expanded. Pass 1 replaces every variable with
+	// `\u0000<id>\u0000`; pass 2 restores those sentinels with their literal
+	// values. NUL bytes never appear in text-mode source, so collisions are
+	// impossible.
+	const NUL = "\u0000";
+	const sentinels: string[] = [];
+	const sentinel = (value: string): string => {
+		const id = sentinels.length;
+		sentinels.push(value);
+		return `${NUL}${id}${NUL}`;
+	};
+
+	let result = text;
+
+	// Positional args.
+	result = result.replace(/\$(\d+)/g, (_, num) => sentinel(args[parseInt(num, 10)] ?? ""));
+
+	// Bash-style slicing: ${@:start} or ${@:start:length}.
+	result = result.replace(/\$\{@:(\d+)(?::(\d+))?\}/g, (_, startStr, lengthStr) => {
+		let start = parseInt(startStr, 10) - 1;
+		if (start < 0) start = 0;
+		if (lengthStr) {
+			const length = parseInt(lengthStr, 10);
+			return sentinel(args.slice(start, start + length).join(" "));
+		}
+		return sentinel(args.slice(start).join(" "));
+	});
+
+	const allArgs = ctx.rawArguments ?? args.slice(1).join(" ");
+
+	result = result.replace(/\$ARGUMENTS\b/g, () => sentinel(allArgs));
+	result = result.replace(/\$@/g, () => sentinel(allArgs));
+
+	// Cave-specific named variables.
+	const namedVars: Record<string, string | undefined> = {
+		CAVE_SESSION_ID: ctx.sessionId,
+		CAVE_SKILL_DIR: ctx.skillDir,
+		CAVE_EFFORT: ctx.effort,
+	};
+
+	result = result.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (match, varName) => {
+		if (varName in namedVars && namedVars[varName] !== undefined) {
+			return sentinel(namedVars[varName] as string);
+		}
+		const fromEnv = process.env[varName];
+		return fromEnv !== undefined ? sentinel(fromEnv) : match;
+	});
+
+	// Restore sentinels.
+	return result.replace(new RegExp(`${NUL}(\\d+)${NUL}`, "g"), (_, id) => sentinels[parseInt(id, 10)] ?? "");
+}
+
+/**
+ * Apply inline shell preprocessing using Claude Code syntax: \`!`cmd`\`
+ *
+ * The pattern is a backtick-delimited literal whose first character is `!`.
+ * When matched, the command runs in `cwd` (default 5s timeout) and its
+ * stdout (trimmed) replaces the literal in the body. Failures keep the
+ * literal in place with an inline error marker so the model still sees
+ * something useful.
+ */
+export async function applyInlineShellPreprocessing(
+	text: string,
+	options: { cwd: string; timeoutMs?: number; shell?: string },
+): Promise<{ content: string; results: Array<{ command: string; ok: boolean; output: string }> }> {
+	const results: Array<{ command: string; ok: boolean; output: string }> = [];
+	const matches: Array<{ start: number; end: number; command: string }> = [];
+
+	// Find every `!`cmd`` occurrence. Backticks may not contain newlines.
+	const regex = /`!([^`\n]+)`/g;
+	let m: RegExpExecArray | null;
+	// biome-ignore lint/suspicious/noAssignInExpressions: classic regex iteration
+	while ((m = regex.exec(text)) !== null) {
+		matches.push({ start: m.index, end: m.index + m[0].length, command: m[1].trim() });
+	}
+
+	if (matches.length === 0) {
+		return { content: text, results };
+	}
+
+	// Run all commands in parallel.
+	const runs = await Promise.all(
+		matches.map(async (match) => {
+			try {
+				const shell = options.shell || (process.platform === "win32" ? "cmd.exe" : "/bin/sh");
+				const shellArgs = process.platform === "win32" ? ["/c", match.command] : ["-c", match.command];
+				const exec = await execCommand(shell, shellArgs, options.cwd, {
+					timeout: options.timeoutMs ?? 5_000,
+				});
+				const ok = exec.code === 0;
+				const output = (exec.stdout || "").trimEnd();
+				results.push({ command: match.command, ok, output: output || (exec.stderr || "").trimEnd() });
+				return { ...match, replacement: ok ? output : `[!${match.command} failed: ${exec.stderr.trim() || `exit ${exec.code}`}]` };
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				results.push({ command: match.command, ok: false, output: message });
+				return { ...match, replacement: `[!${match.command} error: ${message}]` };
+			}
+		}),
+	);
+
+	// Splice replacements in reverse order so indices stay valid.
+	let content = text;
+	for (let i = runs.length - 1; i >= 0; i--) {
+		const r = runs[i];
+		content = content.slice(0, r.start) + r.replacement + content.slice(r.end);
+	}
+
+	return { content, results };
+}
+
+// =============================================================================
+// WS5: Hot Reload Watcher
+// =============================================================================
+
+/**
+ * Watch skill directories for changes and invoke a callback on add/remove/edit.
+ *
+ * The watcher is intentionally cheap: it watches each directory recursively
+ * (Node's `recursive` flag is a no-op on Linux but works on macOS/Windows;
+ * on Linux we fall back to a per-subdir watch lazily).
+ *
+ * Returns a `dispose()` callback that closes all watchers.
+ */
+export interface SkillWatcherOptions {
+	/** Directories to watch. Non-existent ones are ignored. */
+	dirs: string[];
+	/** Called when any markdown file changes; receives the changed path. */
+	onChange: (event: { path: string; eventType: "rename" | "change" }) => void;
+	/** Debounce window (ms) — coalesce burst-of-saves. Default 150ms. */
+	debounceMs?: number;
+}
+
+export function watchSkills(options: SkillWatcherOptions): { dispose: () => void } {
+	const watchers: FSWatcher[] = [];
+	const debounce = options.debounceMs ?? 150;
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	let pending: { path: string; eventType: "rename" | "change" } | null = null;
+
+	const flush = () => {
+		if (pending) {
+			const evt = pending;
+			pending = null;
+			timer = null;
+			try {
+				options.onChange(evt);
+			} catch {
+				// Listener errors must not kill the watcher.
+			}
+		}
+	};
+
+	const enqueue = (filename: string | null, eventType: "rename" | "change", baseDir: string) => {
+		if (!filename) return;
+		const fullPath = join(baseDir, filename);
+		// Only react to markdown files (SKILL.md and command/*.md).
+		if (!fullPath.endsWith(".md")) return;
+		pending = { path: fullPath, eventType };
+		if (timer) clearTimeout(timer);
+		timer = setTimeout(flush, debounce);
+	};
+
+	for (const dir of options.dirs) {
+		if (!existsSync(dir)) continue;
+		try {
+			const w = watch(dir, { recursive: true }, (event, filename) => {
+				enqueue(filename ? String(filename) : null, event, dir);
+			});
+			watchers.push(w);
+		} catch {
+			// Some platforms reject `recursive: true`; fall back to a
+			// non-recursive watch.
+			try {
+				const w = watch(dir, (event, filename) => {
+					enqueue(filename ? String(filename) : null, event, dir);
+				});
+				watchers.push(w);
+			} catch {
+				// Give up on this dir.
+			}
+		}
+	}
+
+	return {
+		dispose() {
+			if (timer) clearTimeout(timer);
+			for (const w of watchers) {
+				try {
+					w.close();
+				} catch {}
+			}
+		},
 	};
 }

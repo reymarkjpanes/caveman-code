@@ -38,7 +38,7 @@
  *   `!`cmd`` runs in cwd at expansion time; stdout replaces the literal.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from "fs";
+import { type Dirent, existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from "fs";
 import { homedir } from "os";
 import { basename, isAbsolute, join, resolve } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
@@ -89,6 +89,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "resume", description: "Resume a different session" },
 	{ name: "reload", description: "Reload keybindings, extensions, skills, prompts, and themes" },
 	{ name: "hooks", description: "List, test, and manage Claude Code-compatible lifecycle hooks (WS4)" },
+	{ name: "mcp", description: "Manage MCP servers (list, doctor, login, reload). See: cave mcp --help." },
 	{ name: "quit", description: "Quit pi" },
 ];
 
@@ -264,7 +265,7 @@ function loadCommandsFromDir(
 
 	if (!existsSync(dir)) return { commands, diagnostics };
 
-	let entries;
+	let entries: Dirent[] = [];
 	try {
 		entries = readdirSync(dir, { withFileTypes: true });
 	} catch (err) {
