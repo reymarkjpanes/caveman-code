@@ -1,12 +1,10 @@
 /**
- * CaveKit Pi Extension
+ * CaveKit Extension
  *
  * Integrates CaveKit DABI lifecycle (Draft → Architect → Build → Inspect)
- * as first-class Pi coding agent extension.
+ * as a first-class Cave coding-agent extension.
  *
  * Extension entry point — export default receives ExtensionAPI.
- * Works on both Cave Pi (`cave`) and vanilla Pi (`pi`), degrading gracefully
- * when thin-fork-only features are absent.
  */
 
 import type { ExtensionAPI } from "cave";

@@ -1,0 +1,10 @@
+{"id":"easy-ts-01-add-jsdoc","difficulty":"easy","language":"typescript","source":"research/evals/microbench/tasks/easy-ts-01-add-jsdoc"}
+{"id":"easy-ts-02-fix-type-error","difficulty":"easy","language":"typescript","source":"research/evals/microbench/tasks/easy-ts-02-fix-type-error"}
+{"id":"easy-ts-03-add-error-handling","difficulty":"easy","language":"typescript","source":"research/evals/microbench/tasks/easy-ts-03-add-error-handling"}
+{"id":"easy-py-01-add-docstrings","difficulty":"easy","language":"python","source":"research/evals/microbench/tasks/easy-py-01-add-docstrings"}
+{"id":"easy-py-02-fix-assertion","difficulty":"easy","language":"python","source":"research/evals/microbench/tasks/easy-py-02-fix-assertion"}
+{"id":"medium-ts-01-extract-function","difficulty":"medium","language":"typescript","source":"research/evals/microbench/tasks/medium-ts-01-extract-function"}
+{"id":"medium-ts-02-replace-api","difficulty":"medium","language":"typescript","source":"research/evals/microbench/tasks/medium-ts-02-replace-api"}
+{"id":"medium-ts-03-fix-failing-test","difficulty":"medium","language":"typescript","source":"research/evals/microbench/tasks/medium-ts-03-fix-failing-test"}
+{"id":"medium-py-02-fix-bug-with-test","difficulty":"medium","language":"python","source":"research/evals/microbench/tasks/medium-py-02-fix-bug-with-test"}
+{"id":"medium-py-04-fix-json-parser","difficulty":"medium","language":"python","source":"research/evals/microbench/tasks/medium-py-04-fix-json-parser"}

@@ -73,29 +73,29 @@ When closing issues via commit:
 - GitHub CLI for issues/PRs
 - Add package labels to issues/PRs: pkg:agent, pkg:ai, pkg:coding-agent, pkg:mom, pkg:pods, pkg:tui, pkg:web-ui
 
-## Testing pi Interactive Mode with tmux
+## Testing cave Interactive Mode with tmux
 
-To test pi's TUI in a controlled terminal environment:
+To test cave's TUI in a controlled terminal environment:
 
 ```bash
 # Create tmux session with specific dimensions
-tmux new-session -d -s pi-test -x 80 -y 24
+tmux new-session -d -s cave-test -x 80 -y 24
 
-# Start pi from source
-tmux send-keys -t pi-test "cd /Users/badlogic/workspaces/pi-mono && ./pi-test.sh" Enter
+# Start cave from source
+tmux send-keys -t cave-test "cd $(pwd) && ./test.sh" Enter
 
 # Wait for startup, then capture output
-sleep 3 && tmux capture-pane -t pi-test -p
+sleep 3 && tmux capture-pane -t cave-test -p
 
 # Send input
-tmux send-keys -t pi-test "your prompt here" Enter
+tmux send-keys -t cave-test "your prompt here" Enter
 
 # Send special keys
-tmux send-keys -t pi-test Escape
-tmux send-keys -t pi-test C-o  # ctrl+o
+tmux send-keys -t cave-test Escape
+tmux send-keys -t cave-test C-o  # ctrl+o
 
 # Cleanup
-tmux kill-session -t pi-test
+tmux kill-session -t cave-test
 ```
 
 ## Style

@@ -1,11 +1,11 @@
 /**
  * Vanilla Pi compatibility tests (T-028 / extension-core/R8).
  *
- * AC-1: Extension loads and initializes without error on vanilla Pi.
- * AC-2: All slash commands functional on vanilla Pi.
+ * AC-1: Extension loads and initializes without error on minimal host.
+ * AC-2: All slash commands functional on minimal host.
  * AC-3: Features depending on thin fork degrade silently (no errors).
  *
- * Strategy: construct a minimal mock ExtensionAPI that matches the vanilla Pi
+ * Strategy: construct a minimal mock ExtensionAPI that matches the minimal host
  * surface (no cave-mode-specific extras).  Pass it to the extension entry point
  * and verify nothing throws.  Command/hook handlers are exercised with the same
  * mock so that any unchecked cave-specific API access surfaces immediately.
@@ -14,7 +14,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 // ============================================================================
-// Minimal mock ExtensionAPI (vanilla Pi surface — no Cave Pi extras)
+// Minimal mock ExtensionAPI (minimal host surface — no cave-specific extras)
 // ============================================================================
 
 type HandlerFn = (...args: unknown[]) => unknown;
@@ -46,7 +46,7 @@ interface RegisteredShortcut {
 }
 
 /**
- * Build a vanilla Pi–style ExtensionAPI mock.
+ * Build a minimal host–style ExtensionAPI mock.
  * Stores all registered commands/tools/shortcuts for later inspection.
  */
 function createVanillaPiMock() {
@@ -66,7 +66,7 @@ function createVanillaPiMock() {
 	};
 
 	const api = {
-		// Event subscription (vanilla Pi has all standard events)
+		// Event subscription (minimal host has all standard events)
 		on: vi.fn((event: string, handler: HandlerFn) => {
 			if (!eventHandlers.has(event)) eventHandlers.set(event, []);
 			eventHandlers.get(event)!.push(handler);
@@ -85,7 +85,7 @@ function createVanillaPiMock() {
 		registerFlag: vi.fn(),
 		registerMessageRenderer: vi.fn(),
 
-		// Actions (vanilla Pi, no cave-mode-specific extras)
+		// Actions (minimal host, no cave-mode-specific extras)
 		sendMessage: vi.fn(),
 		sendUserMessage: vi.fn(),
 		appendEntry: vi.fn(),
@@ -99,7 +99,7 @@ function createVanillaPiMock() {
 		setLabel: vi.fn(),
 		exec: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
 
-		// Session / model (vanilla Pi does not expose cave-mode getters)
+		// Session / model (minimal host does not expose cave-mode getters)
 		getModel: vi.fn(() => undefined),
 		setModel: vi.fn(),
 		getThinkingLevel: vi.fn(() => "none"),
@@ -117,10 +117,10 @@ function createVanillaPiMock() {
 }
 
 // ============================================================================
-// AC-1: Extension entry point initializes without throwing on vanilla Pi
+// AC-1: Extension entry point initializes without throwing on minimal host
 // ============================================================================
 
-describe("cavekit extension — vanilla Pi init (AC-1)", () => {
+describe("cavekit extension — minimal host init (AC-1)", () => {
 	it("loads and calls default export without throwing", async () => {
 		// Dynamically import the extension so module-level side-effects are contained
 		const mod = await import("../index.js");
@@ -132,7 +132,7 @@ describe("cavekit extension — vanilla Pi init (AC-1)", () => {
 		expect(() => cavekit(api as unknown as Parameters<typeof cavekit>[0])).not.toThrow();
 	});
 
-	it("registers commands on vanilla Pi", async () => {
+	it("registers commands on minimal host", async () => {
 		const mod = await import("../index.js");
 		const cavekit = mod.default;
 
@@ -144,7 +144,7 @@ describe("cavekit extension — vanilla Pi init (AC-1)", () => {
 		expect(api._commands.size).toBeGreaterThan(0);
 	});
 
-	it("registers tools on vanilla Pi", async () => {
+	it("registers tools on minimal host", async () => {
 		const mod = await import("../index.js");
 		const cavekit = mod.default;
 
@@ -155,7 +155,7 @@ describe("cavekit extension — vanilla Pi init (AC-1)", () => {
 		expect(api._tools.length).toBeGreaterThan(0);
 	});
 
-	it("registers lifecycle hooks (event subscriptions) on vanilla Pi", async () => {
+	it("registers lifecycle hooks (event subscriptions) on minimal host", async () => {
 		const mod = await import("../index.js");
 		const cavekit = mod.default;
 
@@ -168,10 +168,10 @@ describe("cavekit extension — vanilla Pi init (AC-1)", () => {
 });
 
 // ============================================================================
-// AC-2: Slash commands functional on vanilla Pi
+// AC-2: Slash commands functional on minimal host
 // ============================================================================
 
-describe("cavekit commands — vanilla Pi (AC-2)", () => {
+describe("cavekit commands — minimal host (AC-2)", () => {
 	async function getCommandMap() {
 		const mod = await import("../index.js");
 		const cavekit = mod.default;
@@ -218,22 +218,22 @@ describe("cavekit commands — vanilla Pi (AC-2)", () => {
 		}
 	});
 
-	it("all registered commands handle empty args without throwing on vanilla Pi", async () => {
+	it("all registered commands handle empty args without throwing on minimal host", async () => {
 		const { commands, ctx } = await getCommandMap();
 		for (const [name, cmd] of commands) {
 			await expect(
 				Promise.resolve(cmd.handler("", ctx)),
-				`${name} should handle empty args without throwing on vanilla Pi`,
+				`${name} should handle empty args without throwing on minimal host`,
 			).resolves.toBeUndefined();
 		}
 	});
 });
 
 // ============================================================================
-// AC-3: Cave Pi-specific features degrade silently on vanilla Pi
+// AC-3: cave-specific features degrade silently on minimal host
 // ============================================================================
 
-describe("cavekit hooks — vanilla Pi graceful degradation (AC-3)", () => {
+describe("cavekit hooks — minimal host graceful degradation (AC-3)", () => {
 	async function getHandlers() {
 		const mod = await import("../index.js");
 		const cavekit = mod.default;
@@ -247,7 +247,7 @@ describe("cavekit hooks — vanilla Pi graceful degradation (AC-3)", () => {
 		const hookHandlers = handlers.get("before_agent_start") ?? [];
 		expect(hookHandlers.length).toBeGreaterThan(0);
 
-		// Simulate event from vanilla Pi (no .cavekit/ dir in a temp cwd)
+		// Simulate event from minimal host (no .cavekit/ dir in a temp cwd)
 		const event = { systemPrompt: "You are an assistant." };
 		const tempCtx = { ...ctx, cwd: "/tmp/non-existent-vanilla-pi-project" };
 
@@ -269,7 +269,7 @@ describe("cavekit hooks — vanilla Pi graceful degradation (AC-3)", () => {
 		}
 	});
 
-	it("resources_discover hook does not throw on vanilla Pi", async () => {
+	it("resources_discover hook does not throw on minimal host", async () => {
 		const { handlers } = await getHandlers();
 		const hookHandlers = handlers.get("resources_discover") ?? [];
 		expect(hookHandlers.length).toBeGreaterThan(0);
@@ -302,10 +302,10 @@ describe("cavekit hooks — vanilla Pi graceful degradation (AC-3)", () => {
 });
 
 // ============================================================================
-// Config loading — never throws on vanilla Pi
+// Config loading — never throws on minimal host
 // ============================================================================
 
-describe("loadConfig — vanilla Pi (AC-1 support)", () => {
+describe("loadConfig — minimal host (AC-1 support)", () => {
 	it("returns default config without throwing even when no config files exist", async () => {
 		const { loadConfig } = await import("../config/index.js");
 		// Should not throw — missing files are silently ignored

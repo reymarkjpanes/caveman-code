@@ -306,7 +306,7 @@ npm run check   # lint + format + type check
 ./test.sh       # run tests
 ```
 
-[Biome](https://biomejs.dev/) for lint/format. TypeScript strict. Forked from [pi-mono](https://github.com/badlogic/pi-mono) by badlogic.
+[Biome](https://biomejs.dev/) for lint/format. TypeScript strict.
 
 ## License
 

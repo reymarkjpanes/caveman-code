@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://caveman-cli.dev/proof-bench/results.schema.json",
+  "title": "CAVE Compression Proof — results",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "manifestHash",
+    "codeSha",
+    "ranAt",
+    "costUsd",
+    "live",
+    "replay",
+    "layerIsolation",
+    "outputEval",
+    "preflight"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "codeSha": { "type": "string", "pattern": "^[a-f0-9]{7,40}$" },
+    "datasetHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "ranAt": { "type": "string", "format": "date-time" },
+    "costUsd": { "type": "number", "minimum": 0 },
+    "costCapUsd": { "type": "number", "minimum": 0 },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "os": { "type": "string" },
+        "arch": { "type": "string" },
+        "node": { "type": "string" },
+        "caveVersion": { "type": "string" }
+      }
+    },
+    "live": {
+      "type": "array",
+      "description": "Headline live-run rows: one per (config, task, seed) triple.",
+      "items": {
+        "type": "object",
+        "required": ["config", "taskId", "seed", "passed", "tokens", "durationMs"],
+        "additionalProperties": false,
+        "properties": {
+          "config": { "type": "string" },
+          "taskId": { "type": "string" },
+          "seed": { "type": "integer", "minimum": 0 },
+          "passed": { "type": "boolean" },
+          "tokens": {
+            "type": "object",
+            "required": ["input", "output", "cacheRead", "cacheWrite", "total"],
+            "properties": {
+              "input": { "type": "integer", "minimum": 0 },
+              "output": { "type": "integer", "minimum": 0 },
+              "cacheRead": { "type": "integer", "minimum": 0 },
+              "cacheWrite": { "type": "integer", "minimum": 0 },
+              "total": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "turns": { "type": "integer", "minimum": 0 },
+          "cost": { "type": "number", "minimum": 0 },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "audit": {
+            "type": "object",
+            "required": ["recount", "deltaPct", "withinTolerance"],
+            "properties": {
+              "recount": { "type": "integer", "minimum": 0 },
+              "deltaPct": { "type": "number" },
+              "withinTolerance": { "type": "boolean" },
+              "tolerancePct": { "type": "number" }
+            }
+          },
+          "sessionPath": { "type": "string" }
+        }
+      }
+    },
+    "replay": {
+      "type": "array",
+      "description": "Replay ablations: same session replayed with a given layer disabled.",
+      "items": {
+        "type": "object",
+        "required": ["config", "sessionPath", "tokensOriginal", "tokensReplay"],
+        "properties": {
+          "config": { "type": "string" },
+          "sessionPath": { "type": "string" },
+          "tokensOriginal": { "type": "integer", "minimum": 0 },
+          "tokensReplay": { "type": "integer", "minimum": 0 },
+          "deltaPct": { "type": "number" }
+        }
+      }
+    },
+    "replayBaselines": {
+      "type": "array",
+      "description": "Per-session token count with every caveman layer on — attribution baseline.",
+      "items": {
+        "type": "object",
+        "required": ["sessionPath", "tokensOriginal", "tokensAllLayersOn"],
+        "properties": {
+          "sessionPath": { "type": "string" },
+          "tokensOriginal": { "type": "integer", "minimum": 0 },
+          "tokensAllLayersOn": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "layerIsolation": {
+      "type": "array",
+      "description": "Fixture-level per-layer token savings.",
+      "items": {
+        "type": "object",
+        "required": ["fixture", "layer", "before", "after", "savedPct"],
+        "properties": {
+          "fixture": { "type": "string" },
+          "layer": { "type": "string" },
+          "before": { "type": "integer", "minimum": 0 },
+          "after": { "type": "integer", "minimum": 0 },
+          "savedPct": { "type": "number" }
+        }
+      }
+    },
+    "outputEval": {
+      "type": "array",
+      "description": "Per-prompt caveman-output eval: one row per (prompt, intensity).",
+      "items": {
+        "type": "object",
+        "required": ["promptId", "intensity", "outputTokens", "qualityScore"],
+        "properties": {
+          "promptId": { "type": "string" },
+          "intensity": { "enum": ["off", "lite", "full", "ultra"] },
+          "outputTokens": { "type": "integer", "minimum": 0 },
+          "qualityScore": { "type": "number", "minimum": 0, "maximum": 10 },
+          "judgeRuns": { "type": "integer", "minimum": 1 },
+          "accepted": { "type": "boolean" }
+        }
+      }
+    },
+    "preflight": {
+      "type": "object",
+      "required": ["passed", "checks"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "ok", "detail"],
+            "properties": {
+              "name": { "type": "string" },
+              "ok": { "type": "boolean" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

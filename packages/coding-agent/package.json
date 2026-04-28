@@ -1,7 +1,7 @@
 {
 	"name": "cave",
 	"version": "0.65.2",
-	"description": "Cave Pi — a terminal coding agent",
+	"description": "Cave — a terminal coding agent",
 	"type": "module",
 	"caveConfig": {
 		"name": "cave",
@@ -91,7 +91,7 @@
 		"tui",
 		"agent"
 	],
-	"author": "Mario Zechner",
+	"author": "Julius Brussee",
 	"license": "MIT",
 	"repository": {
 		"type": "git",

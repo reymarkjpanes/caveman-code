@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "CAVE Compression Proof",
+  "description": "Mac-runnable, scrutiny-proof benchmark of the caveman compression stack.",
+  "methodologyVersion": "1.0.0",
+  "datasetVersion": "v1",
+  "model": "claude-haiku-4-5",
+  "fallbackModels": ["claude-haiku-4-5-20251001"],
+  "provider": "anthropic",
+  "seedsPerConfig": 2,
+  "liveTaskCount": 10,
+  "outputPromptCount": 15,
+  "outputIntensities": ["off", "lite", "full", "ultra"],
+  "costCapUsd": 5,
+  "tolerances": {
+    "passAtOneGapPp": 2,
+    "tokenAuditDeltaPct": 2,
+    "outputQualityGap": 1,
+    "minIsoQualityIntersection": 7
+  },
+  "liveConfigs": [
+    {
+      "id": "A-baseline",
+      "settings": {
+        "caveMode": {
+          "enabled": false,
+          "toolCompression": false,
+          "mlCompression": false
+        }
+      }
+    },
+    {
+      "id": "D-output-only",
+      "settings": {
+        "caveMode": {
+          "enabled": true,
+          "intensity": "full",
+          "toolCompression": false,
+          "mlCompression": false
+        }
+      }
+    },
+    {
+      "id": "F-cave-full",
+      "settings": {
+        "caveMode": {
+          "enabled": true,
+          "intensity": "full",
+          "toolCompression": true,
+          "mlCompression": false
+        }
+      }
+    },
+    {
+      "id": "G-cave-ultra",
+      "settings": {
+        "caveMode": {
+          "enabled": true,
+          "intensity": "ultra",
+          "toolCompression": true,
+          "mlCompression": true
+        }
+      }
+    }
+  ],
+  "replayConfigs": [
+    { "id": "replay-no-flint", "disables": ["flint"] },
+    { "id": "replay-no-stone", "disables": ["stone"] },
+    { "id": "replay-no-dedup", "disables": ["dedup"] },
+    { "id": "replay-no-compaction", "disables": ["compaction"] }
+  ],
+  "notes": "datasetHash and codeSha are injected by scripts/run-all.sh before the run. Any post-run edit to this file invalidates the published results."
+}

@@ -18,7 +18,7 @@ OSS weekend runs Thursday, April 2, 2026 through Monday, April 13, 2026. New iss
   <a href="https://github.com/JuliusBrussee/caveman-cli/actions/workflows/ci.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/JuliusBrussee/caveman-cli/ci.yml?style=flat-square&branch=main" /></a>
 </p>
 
-Caveman Code is the `cave` CLI package in [JuliusBrussee/caveman-cli](https://github.com/JuliusBrussee/caveman-cli). Forked from [pi-mono](https://github.com/badlogic/pi-mono) by badlogic. This README documents the forked Caveman Code package, not the upstream project.
+Caveman Code is the `cave` CLI package in [JuliusBrussee/caveman-cli](https://github.com/JuliusBrussee/caveman-cli).
 
 Cave is a minimal terminal coding harness that stays provider-agnostic, terminal-native, and deeply extensible. Use it interactively, run it in print or JSON mode, embed it through the SDK, or extend it with TypeScript modules, skills, prompt templates, themes, and CaveKit workflows.
 

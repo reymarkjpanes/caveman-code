@@ -1,5 +1,5 @@
 {
-	"name": "@cave/cave-pi-monorepo",
+	"name": "@cave/monorepo",
 	"private": true,
 	"type": "module",
 	"workspaces": [
@@ -67,5 +67,5 @@
 			"rimraf": "6.1.2"
 		}
 	},
-	"description": "Cave Pi monorepo"
+	"description": "Cave CLI monorepo"
 }

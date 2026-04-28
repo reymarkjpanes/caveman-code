@@ -1,8 +1,6 @@
 # Contributing to Caveman Code
 
-Contributing here means contributing to the Caveman Code fork maintained in [JuliusBrussee/caveman-cli](https://github.com/JuliusBrussee/caveman-cli).
-
-Caveman Code is a fork of [pi-mono](https://github.com/badlogic/pi-mono) by Mario Zechner (badlogic). Upstream contributions should still be directed to the original project where appropriate.
+Contributing here means contributing to Caveman Code maintained in [JuliusBrussee/caveman-cli](https://github.com/JuliusBrussee/caveman-cli).
 
 ## The One Rule
 
@@ -11,44 +9,6 @@ Caveman Code is a fork of [pi-mono](https://github.com/badlogic/pi-mono) by Mari
 Using AI to write code is fine. You can gain understanding by interrogating an agent with access to the codebase until you grasp all edge cases and effects of your changes. What's not fine is submitting agent-generated slop without that understanding.
 
 If you use an agent, run it from the `caveman-cli` root directory so it picks up `AGENTS.md` automatically. Your agent must follow the rules and guidelines in that file.
-
-## Syncing with Upstream (pi-mono)
-
-Fork sync contract is tracked in `.github/upstream-sync.json`.
-
-Required local git configuration:
-
-- Remote name: `upstream`
-- Fetch URL: `https://github.com/badlogic/pi-mono.git`
-- Push URL: `DISABLE`
-- Fetch refspec: `+refs/heads/*:refs/remotes/upstream/*`
-- Default upstream branch: `upstream/main`
-
-Audit current clone before syncing:
-
-```bash
-git remote get-url upstream
-git remote get-url --push upstream
-git config --get-all remote.upstream.fetch
-git fetch upstream
-```
-
-To pull in upstream changes:
-
-```bash
-# Fetch latest from upstream
-git fetch upstream
-
-# Merge or rebase onto upstream/main
-git merge upstream/main
-# or
-git rebase upstream/main
-
-# Resolve any conflicts, then push to origin
-git push origin main
-```
-
-Keep Caveman Code-specific changes (banner, config dir, package scope) in their own commits so they can be rebased cleanly over upstream updates.
 
 ## First-Time Contributors
 
