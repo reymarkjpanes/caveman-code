@@ -18,7 +18,13 @@ import { basename, dirname, join, resolve } from "node:path";
 import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, ThinkingLevel } from "@cave/agent";
 import { LLMLinguaMiddleware, PLAN_MODE_TOOLS } from "@cave/agent";
 import type { AssistantMessage, ImageContent, Message, Model, TextContent } from "@cave/ai";
-import { isContextOverflow, modelsAreEqual, resetApiProviders, supportsXhigh } from "@cave/ai";
+import {
+	ENV_VAR_BY_PROVIDER,
+	isContextOverflow,
+	modelsAreEqual,
+	resetApiProviders,
+	supportsXhigh,
+} from "@cave/ai";
 import { getDocsPath } from "../config.js";
 import { theme } from "../modes/interactive/theme/theme.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
@@ -2610,6 +2616,21 @@ export class AgentSession {
 								authed.find((m) => m.id === agentModel);
 							return authedMatch ? `${authedMatch.provider}/${authedMatch.id}` : parentRef;
 						},
+						envOverrides: (() => {
+							// Forward the parent's runtime-only API keys (set via
+							// `--api-key` and never written to disk) to the child via
+							// the canonical env var name for each provider, so a
+							// spawned subagent can authenticate to the same provider
+							// the parent is using (Codex / Azure OpenAI Responses /
+							// any other custom provider).
+							const overrides: Record<string, string> = {};
+							const runtime = this._modelRegistry.authStorage.getRuntimeApiKeys();
+							for (const [provider, key] of runtime) {
+								const envVar = ENV_VAR_BY_PROVIDER[provider];
+								if (envVar) overrides[envVar] = key;
+							}
+							return overrides;
+						})(),
 					},
 				});
 

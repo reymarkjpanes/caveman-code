@@ -217,6 +217,16 @@ export class AuthStorage {
 	}
 
 	/**
+	 * Snapshot of all runtime API key overrides as `provider → key`. Used by
+	 * the subagent runner to propagate parent-only credentials (set via
+	 * `--api-key` rather than disk auth.json) into the child cave's env so
+	 * spawned subagents can authenticate.
+	 */
+	getRuntimeApiKeys(): ReadonlyMap<string, string> {
+		return new Map(this.runtimeOverrides);
+	}
+
+	/**
 	 * Set a fallback resolver for API keys not found in auth.json or env vars.
 	 * Used for custom provider keys from models.json.
 	 */

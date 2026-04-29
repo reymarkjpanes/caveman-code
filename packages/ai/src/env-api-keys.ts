@@ -132,7 +132,7 @@ export function getEnvApiKey(provider: any): string | undefined {
 	return envVar ? process.env[envVar] : undefined;
 }
 
-const ENV_VAR_BY_PROVIDER: Record<string, string> = {
+export const ENV_VAR_BY_PROVIDER: Record<string, string> = {
 	openai: "OPENAI_API_KEY",
 	"azure-openai-responses": "AZURE_OPENAI_API_KEY",
 	anthropic: "ANTHROPIC_API_KEY",

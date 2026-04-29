@@ -109,6 +109,13 @@ interface SpawnOptions {
 	 * settings default).
 	 */
 	resolveModel?: (agentModel: string | undefined) => string | undefined;
+	/**
+	 * Map of `ENV_VAR_NAME → value` to merge into the child's environment.
+	 * Used to forward parent-only runtime API keys (set via `--api-key` and
+	 * never written to disk) so the spawned subagent can authenticate against
+	 * the same provider as the parent.
+	 */
+	envOverrides?: Record<string, string>;
 }
 
 interface SpawnResult {
@@ -186,6 +193,7 @@ async function spawnSubagent(opts: SpawnOptions): Promise<SpawnResult> {
 	const childDepth = currentSubagentDepth() + 1;
 	const childEnv: NodeJS.ProcessEnv = {
 		...process.env,
+		...(opts.envOverrides ?? {}),
 		[SUBAGENT_DEPTH_ENV]: String(childDepth),
 	};
 
@@ -321,6 +329,7 @@ async function runOne(
 		mockSpawn?: typeof spawn;
 		idSuffix?: string;
 		resolveModel?: SpawnOptions["resolveModel"];
+		envOverrides?: SpawnOptions["envOverrides"];
 	} = {},
 ): Promise<SubagentResult> {
 	const found = findAgentDef(loaded, agentName);
@@ -348,6 +357,7 @@ async function runOne(
 			caveBin: options.caveBin,
 			mockSpawn: options.mockSpawn,
 			resolveModel: options.resolveModel,
+			envOverrides: options.envOverrides,
 		});
 	} catch (err) {
 		const cleaned = await maybeCleanupWorktree(parentCwd, wt.worktree);
@@ -418,6 +428,12 @@ export interface TaskToolOptions {
 	 * provider can still invoke agents whose .md files pin a Claude tier.
 	 */
 	resolveModel?: SpawnOptions["resolveModel"];
+	/**
+	 * Env vars to merge into each spawned subagent's environment. Wired from
+	 * the parent's `AuthStorage.getRuntimeApiKeys()` so credentials set via
+	 * `--api-key` (in-memory only) reach the child cave.
+	 */
+	envOverrides?: SpawnOptions["envOverrides"];
 }
 
 export function createTaskToolDefinition(
@@ -511,6 +527,7 @@ export function createTaskToolDefinition(
 					caveBin: options?.caveBin,
 					mockSpawn: options?.mockSpawn,
 					resolveModel: options?.resolveModel,
+					envOverrides: options?.envOverrides,
 				});
 				const text =
 					r.exitCode === 0
@@ -529,6 +546,7 @@ export function createTaskToolDefinition(
 						mockSpawn: options?.mockSpawn,
 						idSuffix: String(idx),
 						resolveModel: options?.resolveModel,
+						envOverrides: options?.envOverrides,
 					}),
 				);
 				const ok = results.filter((r) => r.exitCode === 0).length;
@@ -557,6 +575,7 @@ export function createTaskToolDefinition(
 					mockSpawn: options?.mockSpawn,
 					idSuffix: `chain-${i}`,
 					resolveModel: options?.resolveModel,
+					envOverrides: options?.envOverrides,
 				});
 				results.push(r);
 				if (r.exitCode !== 0) {
