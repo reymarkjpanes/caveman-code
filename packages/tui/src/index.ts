@@ -101,6 +101,10 @@ export {
 	setKeybindings,
 	TUI_KEYBINDINGS,
 } from "./keybindings.js";
+// Chord (multi-key sequence) matcher — sits on top of KeybindingsManager
+export { type ChordResult, type ChordSegment, ChordSession, parseChord } from "./chord.js";
+// Terminal notifications (OSC 9 + bell)
+export { bell, notify, type NotifyOptions } from "./notifications.js";
 // Keyboard input handling
 export {
 	decodeKittyPrintable,
