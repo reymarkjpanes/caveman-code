@@ -92,8 +92,7 @@ Auto-update channels (`stable`, `beta`, `canary`) and headless / CI install: see
 | 20+ provider OAuth | yes (unique) | Anthropic only | ChatGPT only | env keys only | env keys |
 | Session branching + fork | yes | no | fork only | git only | no |
 | Native MCP | yes | yes | yes | no | yes |
-| Native sandbox (Seatbelt / Landlock / Restricted) | yes | partial | yes | no | partial |
-| Plan mode | yes | yes | yes | architect | yes |
+| Autopilot (no permission prompts) | yes | no | no | yes | no |
 | Repo map (PageRank) | yes | no | no | yes | no |
 | Edit-format-per-model | yes | no | no | yes | no |
 | Worktree-isolated subagents | yes | yes | yes | no | no |
@@ -207,18 +206,9 @@ cave --no-cave-mode         # off
 </details>
 
 <details>
-<summary><strong>Plan mode</strong> — read-only exploration, structured plan, then /act</summary>
+<summary><strong>Architect / editor split</strong> — Opus plans, Haiku executes</summary>
 
-```bash
-cave --plan
-> refactor packages/agent/src/sandbox to use the policy IR
-# model returns a structured ## Plan section
-/act    # walks each step in order
-```
-
-Architect / editor split: `cave --architect claude-opus-4-7 --editor claude-haiku-4` runs Opus for planning and Haiku for execution. Drops cost ~3-5×.
-
-[Plan Mode reference →](https://cave.sh/docs/reference/plan-mode)
+`cave --architect claude-opus-4-7 --editor claude-haiku-4` runs Opus for planning and Haiku for execution. Drops cost ~3-5×.
 
 </details>
 
@@ -233,7 +223,6 @@ description: "Read-only directory exploration. Returns 500-token summary."
 prompt: "Walk the directory at $1. List subdirs with one-line purpose hints."
 tools: [Read, Glob, Grep, Bash]
 model: claude-haiku-4
-permissionMode: plan
 isolation: worktree
 ---
 ```
@@ -280,7 +269,7 @@ Cave's authoring formats are a **superset** of Claude Code's:
 
 | Claude Code path | Cave path | Notes |
 |---|---|---|
-| `~/.claude/settings.json` | `~/.cave/settings.json` | Hooks + permissions identical schema |
+| `~/.claude/settings.json` | `~/.cave/settings.json` | Hooks schema identical (cave runs hooks as observers, never blocks) |
 | `~/.claude/commands/*.md` | `~/.cave/commands/*.md` | Frontmatter superset |
 | `~/.claude/skills/<name>/SKILL.md` | `~/.cave/skills/<name>/SKILL.md` | Identical |
 | `~/.claude/agents/<name>.md` | `~/.cave/agents/<name>.md` | Frontmatter superset |
