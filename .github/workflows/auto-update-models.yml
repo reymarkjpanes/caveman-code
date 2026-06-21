@@ -1,0 +1,67 @@
+name: auto-update-models
+
+# Daily refresh of the generated model registry (packages/ai/src/models.generated.ts).
+# Regenerates from public upstream sources; when the catalog actually changes it
+# builds, tests, bumps the version, commits to main, tags, and dispatches the
+# existing Release workflow (build-binaries.yml) so installed CLIs pick up new
+# models on the next npm update / reinstall.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily 06:00 UTC (before bench-nightly at 07:00)
+  workflow_dispatch: {} # manual trigger for testing
+
+permissions:
+  contents: write # commit + tag to main
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Regenerate model registry
+        run: npm run generate-models -w @juliusbrussee/caveman-ai
+
+      - name: Detect change
+        id: diff
+        run: |
+          if git diff --quiet packages/ai/src/models.generated.ts; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build + test (gate release)
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          npm run build
+          npm test --workspaces --if-present
+
+      - name: Bump, commit, tag, release
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name  "cave-bot"
+          git config user.email "bot@cave.local"
+          npm run version:patch
+          VERSION=$(node -p "require('./packages/ai/package.json').version")
+          git add -A
+          git commit -m "chore(models): daily registry refresh → release v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin HEAD:main
+          git push origin "v${VERSION}"
+          # A tag pushed with the default GITHUB_TOKEN does NOT trigger another
+          # workflow (recursion guard); workflow_dispatch is the documented
+          # exception, so fire the Release pipeline explicitly.
+          gh workflow run build-binaries.yml -f tag="v${VERSION}"

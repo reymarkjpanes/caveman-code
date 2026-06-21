@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import type { Api, KnownProvider, Model } from "../src/types.js";
@@ -1579,8 +1579,32 @@ export const MODELS = {
 	output += `} as const;
 `;
 
+	// Safety guard: refuse to ship a gutted catalog. Upstream fetch failures are
+	// swallowed (return []), and this generator re-runs at publish/build time, so
+	// an outage could otherwise silently overwrite the committed file with an
+	// empty/tiny model list and auto-publish it. Fail loudly instead.
+	const MODEL_FLOOR = 50;
+	const outputPath = join(packageRoot, "src/models.generated.ts");
+	const newCount = (output.match(/satisfies Model</g) ?? []).length;
+	const oldCount = existsSync(outputPath)
+		? (readFileSync(outputPath, "utf-8").match(/satisfies Model</g) ?? []).length
+		: 0;
+
+	if (newCount < MODEL_FLOOR) {
+		throw new Error(
+			`Refusing to write models.generated.ts: only ${newCount} models (floor ${MODEL_FLOOR}). ` +
+				`An upstream source likely failed — not overwriting the existing catalog.`,
+		);
+	}
+	if (oldCount > 0 && newCount < 0.9 * oldCount) {
+		throw new Error(
+			`Refusing to write models.generated.ts: model count dropped ${oldCount} → ${newCount} ` +
+				`(>10% loss). An upstream source likely failed — not overwriting the existing catalog.`,
+		);
+	}
+
 	// Write file
-	writeFileSync(join(packageRoot, "src/models.generated.ts"), output);
+	writeFileSync(outputPath, output);
 	console.log("Generated src/models.generated.ts");
 
 	// Print statistics
@@ -1597,4 +1621,7 @@ export const MODELS = {
 }
 
 // Run the generator
-generateModels().catch(console.error);
+generateModels().catch((e) => {
+	console.error(e);
+	process.exit(1);
+});
